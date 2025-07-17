@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise Document Search</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.1/socket.io.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .header {
+            text-align: center;
+            background-color: #4a4a4a;
+            color: white;
+            padding: 20px;
+            border-radius: 5px;
+        }
+        .search-container {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+            gap: 10px;
+        }
+        .search-container input[type="text"] {
+            padding: 10px;
+            width: 300px;
+            border: 1px solid #ccc;
+            border-radius: 4px 0 0 4px;
+        }
+        .search-container button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 0 4px 4px 0;
+            cursor: pointer;
+        }
+        .search-container button:hover {
+            background-color: #0056b3;
+        }
+        .index-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .index-container input[type="text"] {
+            padding: 10px;
+            width: 300px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .index-container input[type="file"] {
+            margin-top: 10px;
+        }
+        .index-container button {
+            padding: 10px 20px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .index-container button:hover {
+            background-color: #218838;
+        }
+        .progress-container {
+            display: none;
+            margin: 20px auto;
+            max-width: 600px;
+        }
+        .progress-bar {
+            width: 100%;
+            background-color: #ddd;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .progress {
+            width: 0%;
+            height: 20px;
+            background-color: #28a745;
+            text-align: center;
+            line-height: 20px;
+            color: white;
+            transition: width 0.3s;
+        }
+        .progress-text {
+            margin-top: 5px;
+            text-align: center;
+        }
+        .results {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .result-card {
+            background-color: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .result-card .title {
+            color: #007bff;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .result-card .snippet {
+            margin: 5px 0;
+            color: #333;
+        }
+        .result-card .match {
+            margin: 5px 0;
+            color: #28a745;
+        }
+        .result-card .metadata {
+            margin: 5px 0;
+            color: #666;
+            font-size: 0.9em;
+        }
+        .result-card .actions {
+            margin-top: 10px;
+        }
+        .result-card .actions button {
+            padding: 5px 10px;
+            margin-right: 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .result-card .actions .preview {
+            background-color: #17a2b8;
+            color: white;
+        }
+        .message, .count {
+            text-align: center;
+            color: #555;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-height: 70vh;
+            overflow-y: auto;
+            position: relative;
+            border-radius: 8px;
+        }
+        .modal-content iframe {
+            width: 100%;
+            height: 500px;
+            border: none;
+        }
+        .close {
+            color: #aaa;
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover,
+        .close:focus {
+            color: black;
+            text-decoration: none;
+        }
+        .public-url-container {
+            text-align: center;
+            margin: 20px 0;
+            display: none;
+        }
+        .public-url-container input[type="text"] {
+            padding: 10px;
+            width: 300px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .public-url-container button {
+            padding: 10px 20px;
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .public-url-container button:hover {
+            background-color: #c82333;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Enterprise Document Search</h1>
+        <p>Search across all your organization's documents, presentations, and knowledge bases</p>
+    </div>
+    <div class="index-container">
+        <form method="POST" id="index-form">
+            <input type="text" name="directory" id="directory-input" placeholder="Enter directory to index...">
+            <input type="file" id="directory-picker" webkitdirectory directory style="display: none;">
+            <button type="button" onclick="document.getElementById('directory-picker').click();">Choose Directory</button>
+            <button type="submit" name="index">Index Directory</button>
+        </form>
+    </div>
+    <div class="progress-container" id="progress-container">
+        <div class="progress-bar">
+            <div class="progress" id="progress-bar">0%</div>
+        </div>
+        <p class="progress-text" id="progress-text">Indexing 0/0 files...</p>
+    </div>
+    <div class="search-container">
+        <form method="POST">
+            <input type="text" name="query" value="{{ query or '' }}" placeholder="Search (e.g., metadata.drug:Aspirin or text)">
+            <button type="submit" name="search">Search</button>
+        </form>
+    </div>
+    {% if message %}
+        <p class="message">{{ message }}</p>
+    {% endif %}
+    {% if results %}
+        <div class="results">
+            {% for result in results %}
+                <div class="result-card">
+                    <p class="title">
+                        <span>{{ result.path }}</span>
+                    </p>
+                    <p class="snippet">{{ result.snippet }}</p>
+                    <p class="match">Match: {{ result.match_percentage }}%</p>
+                    {% if result.metadata %}
+                        <p class="metadata">
+                            <b>Metadata:</b>
+                            {% for key, value in result.metadata.items() %}
+                                {{ key }}: {{ value | escape }} {% if not loop.last %}|{% endif %}
+                            {% endfor %}
+                        </p>
+                    {% endif %}
+                    <div class="actions">
+                        {% set base_dir = last_indexed_dir if last_indexed_dir else '/Volumes/CORRUPTED/AI/Sample' %}
+                        {% set preview_path = result.path | replace(base_dir + '/', '') | escape if result.path.startswith(base_dir) else result.path | escape %}
+                        <button class="preview" onclick="openPreview('{{ preview_path }}')">Preview</button>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+        <p class="count">Found {{ count }} results</p>
+    {% endif %}
+
+    <div id="previewModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closePreview()">×</span>
+            <h2>Document Preview</h2>
+            <iframe id="previewFrame"></iframe>
+        </div>
+    </div>
+
+    <div class="public-url-container" id="public-url-container">
+        <form id="public-url-form" method="POST" action="/update_public_url">
+            <input type="text" name="public_url" id="public-url-input" value="{{ public_url }}" placeholder="Enter public URL (e.g., https://new-ngrok-url.ngrok-free.app)">
+            <button type="submit" name="update_public_url">Update Public URL</button>
+        </form>
+        <p id="public-url-status"></p>
+    </div>
+
+    <script>
+        const socket = io();
+        const form = document.getElementById("index-form");
+        const progressContainer = document.getElementById("progress-container");
+        const progressBar = document.getElementById("progress-bar");
+        const progressText = document.getElementById("progress-text");
+        const directoryInput = document.getElementById("directory-input");
+        const directoryPicker = document.getElementById("directory-picker");
+        const previewModal = document.getElementById("previewModal");
+        const previewFrame = document.getElementById("previewFrame");
+        const publicUrlForm = document.getElementById("public-url-form");
+        const publicUrlInput = document.getElementById("public-url-input");
+        const publicUrlStatus = document.getElementById("public-url-status");
+        const publicUrlContainer = document.getElementById("public-url-container");
+
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('dev') === 'true') {
+            publicUrlContainer.style.display = 'block';
+        }
+
+        socket.on("connect", function() { console.log("Connected to SocketIO"); });
+        socket.on("disconnect", function() { console.log("Disconnected from SocketIO"); });
+
+        directoryPicker.addEventListener("change", function(event) {
+            const files = event.target.files;
+            console.log("Files selected:", files);
+            if (files.length > 0) {
+                const file = files[0];
+                let directory = '';
+                if (file.path) {
+                    directory = file.path.substring(0, file.path.lastIndexOf('/'));
+                    console.log("Extracted directory using file.path:", directory);
+                } else if (file.webkitRelativePath) {
+                    const relativePathParts = file.webkitRelativePath.split('/');
+                    relativePathParts.pop();
+                    directory = relativePathParts.join('/');
+                    console.log("Extracted relative directory using webkitRelativePath:", directory);
+                    const suggestedPath = '/Volumes/' + directory;
+                    directoryInput.value = suggestedPath;
+                    console.log("Suggested full path:", suggestedPath);
+                    const userConfirmed = confirm(`Suggested path: ${suggestedPath}\nIs this correct? Click OK to index, or Cancel to enter a custom path.`);
+                    if (userConfirmed) {
+                        console.log("User confirmed, triggering indexing with:", suggestedPath);
+                        startIndexing(suggestedPath);
+                    } else {
+                        console.log("User cancelled, requiring manual entry.");
+                        alert("Please enter the full path in the input field and click 'Index Directory'.");
+                    }
+                } else {
+                    console.warn("Could not determine directory path from picker.");
+                    alert("Unable to determine the directory path. Please manually enter the full path.");
+                }
+            } else {
+                console.warn("No files selected in directory picker.");
+                alert("No directory selected. Please try again.");
+            }
+        });
+
+        form.addEventListener("submit", function(event) {
+            event.preventDefault();
+            const directory = directoryInput.value.trim();
+            console.log("Submitting index request for directory:", directory);
+            if (!directory) {
+                alert("Please select or enter a directory to index.");
+                return;
+            }
+            startIndexing(directory);
+        });
+
+        function startIndexing(directory) {
+            console.log("Starting indexing for directory:", directory);
+            progressContainer.style.display = "block";
+            progressBar.style.width = "0%";
+            progressBar.textContent = "0%";
+            progressText.textContent = "Indexing 0/0 files...";
+            socket.emit("start_indexing", { directory: directory });
+        }
+
+        socket.on("index_progress", function(data) {
+            const progress = data.progress.toFixed(2);
+            progressBar.style.width = progress + "%";
+            progressBar.textContent = progress + "%";
+            progressText.textContent = `Indexing ${data.indexed}/${data.total} files...`;
+        });
+
+        socket.on("index_complete", function(data) {
+            progressContainer.style.display = "none";
+            alert(data.message);
+            window.location.reload();
+        });
+
+        function openPreview(filePath) {
+            filePath = filePath.replace(/^\/+/, '');
+            console.log("File path for preview:", filePath);
+            previewModal.style.display = "block";
+            let publicBaseUrl = '{{ public_url }}';
+            if (!publicBaseUrl || publicBaseUrl === 'https://default-public-url.com') {
+                publicBaseUrl = window.location.origin;
+                console.warn("No valid public URL provided, using current origin:", publicBaseUrl);
+            }
+            console.log("Public Base URL:", publicBaseUrl);
+            const previewUrl = `${publicBaseUrl}/preview/${encodeURIComponent(filePath)}`;
+            previewFrame.src = previewUrl;
+            console.log("Preview URL set to:", previewUrl);
+        }
+
+        function closePreview() {
+            previewModal.style.display = "none";
+            previewFrame.src = '';
+        }
+
+        window.onclick = function(event) {
+            if (event.target == previewModal) {
+                closePreview();
+            }
+        };
+
+        publicUrlForm.addEventListener("submit", function(event) {
+            event.preventDefault();
+            const newUrl = publicUrlInput.value.trim();
+            fetch('/update_public_url', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: `public_url=${encodeURIComponent(newUrl)}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === "success") {
+                    publicUrlStatus.textContent = `Public URL updated to: ${data.public_url}`;
+                    publicUrlStatus.style.color = "green";
+                    setTimeout(() => publicUrlStatus.textContent = "", 3000);
+                    window.location.reload();
+                } else {
+                    publicUrlStatus.textContent = data.message;
+                    publicUrlStatus.style.color = "red";
+                }
+            })
+            .catch(error => {
+                console.error("Error updating public URL:", error);
+                publicUrlStatus.textContent = "Error updating public URL";
+                publicUrlStatus.style.color = "red";
+            });
+        });
+    </script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'931558b96f4e4532',t:'MTc0NDgyMzk1NS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>

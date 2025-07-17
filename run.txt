@@ -1,0 +1,14 @@
+ /opt/homebrew/opt/elasticsearch-full/bin/elasticsearch
+
+ curl http://localhost:9200
+
+cd Enterprise\ Document
+
+ngrok http 5000
+
+python3 app.py
+
+http://localhost:5000/?dev=true
+
+update the public url
+
